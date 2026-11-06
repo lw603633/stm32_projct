@@ -1,0 +1,10 @@
+# Keil5 编译输出文件夹
+**/MDK-ARM/01_freertos_template/
+
+# Keil5 用户配置
+*.uvoptx
+*.uvguix.*
+
+# 临时文件
+*.bak
+*.tmp
