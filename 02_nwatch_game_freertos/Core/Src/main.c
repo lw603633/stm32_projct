@@ -89,6 +89,16 @@ int main(void)
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
+	
+	// 1. 开启 DWT 功能
+CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+
+// 2. 清零周期计数器
+DWT->CYCCNT = 0;
+
+// 3. 启动周期计数
+DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+
 
   /* USER CODE END SysInit */
 

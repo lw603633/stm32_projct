@@ -22,7 +22,9 @@
 static unsigned char g_KeysBuf[BUF_LEN];
 static int g_KeysBuf_R, g_KeysBuf_W;
 
-static uint64_t g_IRReceiverIRQ_Timers[68];
+
+static uint32_t g_IRReceiverIRQ_Timers[68];
+//static uint64_t g_IRReceiverIRQ_Timers[68];
 static int g_IRReceiverIRQ_Cnt = 0;
 
 
@@ -40,6 +42,8 @@ volatile uint32_t ir_incomplete_reset_count = 0;
 volatile uint32_t ir_last_partial_edges = 0;
 
 #define NEXT_POS(x) ((x+1) % BUF_LEN)
+
+#define IR_CYCLES_PER_US (SystemCoreClock / 1000000UL)
 
 /* 辅助函数 */
 
@@ -125,7 +129,8 @@ static unsigned char GetKeyFromBuf(void)
  ***********************************************************************/
 static int IRReceiver_IRQTimes_Parse(void)
 {
-	uint64_t time;
+	uint32_t time;
+	//uint64_t time;
 	int i;
 	int m, n;
 	unsigned char datas[4];
@@ -134,33 +139,69 @@ static int IRReceiver_IRQTimes_Parse(void)
 	int byte = 0;
 	
 	struct ir_data idata ;
+	
+		time = (uint32_t)(
+			g_IRReceiverIRQ_Timers[1] -
+			g_IRReceiverIRQ_Timers[0]
+	);
 
-	/* 1. 判断前导码 : 9ms的低脉冲, 4.5ms高脉冲  */
-	time = g_IRReceiverIRQ_Timers[1] - g_IRReceiverIRQ_Timers[0];
-	if (time < 8000000 || time > 10000000)
+	if (time < 8000UL * IR_CYCLES_PER_US ||
+			time > 10000UL * IR_CYCLES_PER_US)
 	{
-		return -1;
+			return -1;
+	}
+	
+		time = (uint32_t)(
+			g_IRReceiverIRQ_Timers[2] -
+			g_IRReceiverIRQ_Timers[1]
+	);
+
+	if (time < 3500UL * IR_CYCLES_PER_US ||
+			time > 55000UL * IR_CYCLES_PER_US)
+	{
+			return -1;
 	}
 
-	time = g_IRReceiverIRQ_Timers[2] - g_IRReceiverIRQ_Timers[1];
-	if (time < 3500000 || time > 55000000)
-	{
-		return -1;
-	}
+	///* 1. 判断前导码 : 9ms的低脉冲, 4.5ms高脉冲  */
+	//time = g_IRReceiverIRQ_Timers[1] - g_IRReceiverIRQ_Timers[0];
+	//if (time < 8000000 || time > 10000000)
+	//{
+	//	return -1;
+	//}
+	//
+	//time = g_IRReceiverIRQ_Timers[2] - g_IRReceiverIRQ_Timers[1];
+	//if (time < 3500000 || time > 55000000)
+	//{
+	//	return -1;
+	//}
 
 	/* 2. 解析数据 */
 	for (i = 0; i < 32; i++)
 	{
 		m = 3 + i*2;
 		n = m+1;
-		time = g_IRReceiverIRQ_Timers[n] - g_IRReceiverIRQ_Timers[m];
+		
+		time = (uint32_t)(
+    g_IRReceiverIRQ_Timers[n] -
+    g_IRReceiverIRQ_Timers[m]
+		);
+
 		data <<= 1;
+
 		bits++;
-		if (time > 1000000)
+
+		if (time > 1000UL * IR_CYCLES_PER_US)
 		{
-			/* 得到了数据1 */
-			data |= 1;
+				data |= 1;
 		}
+	//	time = g_IRReceiverIRQ_Timers[n] - g_IRReceiverIRQ_Timers[m];
+	//	data <<= 1;
+	//	bits++;
+	//	if (time > 1000000)
+	//	{
+	//		/* 得到了数据1 */
+	//		data |= 1;
+	//	}
 
 		if (bits == 8)
 		{
@@ -204,22 +245,49 @@ static int IRReceiver_IRQTimes_Parse(void)
  ***********************************************************************/
 static int isRepeatedKey(void)
 {
-	uint64_t time;
+	//uint64_t time;
+	uint32_t time;
 
-	/* 1. 判断重复码 : 9ms的低脉冲, 2.25ms高脉冲  */
-	time = g_IRReceiverIRQ_Timers[1] - g_IRReceiverIRQ_Timers[0];
-	if (time < 8000000 || time > 10000000)
-	{
-		return 0;
-	}
+//	/* 1. 判断重复码 : 9ms的低脉冲, 2.25ms高脉冲  */
+//	time = g_IRReceiverIRQ_Timers[1] - g_IRReceiverIRQ_Timers[0];
+//	if (time < 8000000 || time > 10000000)
+//	{
+//		return 0;
+//	}
+//
+//	time = g_IRReceiverIRQ_Timers[2] - g_IRReceiverIRQ_Timers[1];
+//	if (time < 2000000 || time > 2500000)
+//	{
+//		return 0;
+//	}	
+//
+//	return 1;
+	
+	// NEC重复码：9ms低电平
+		time = (uint32_t)(
+				g_IRReceiverIRQ_Timers[1] -
+				g_IRReceiverIRQ_Timers[0]
+		);
 
-	time = g_IRReceiverIRQ_Timers[2] - g_IRReceiverIRQ_Timers[1];
-	if (time < 2000000 || time > 2500000)
-	{
-		return 0;
-	}	
+		if (time < 8000UL * IR_CYCLES_PER_US ||
+				time > 10000UL * IR_CYCLES_PER_US)
+		{
+				return 0;
+		}
 
-	return 1;
+		// NEC重复码：2.25ms高电平
+		time = (uint32_t)(
+				g_IRReceiverIRQ_Timers[2] -
+				g_IRReceiverIRQ_Timers[1]
+		);
+
+		if (time < 2000UL * IR_CYCLES_PER_US ||
+				time > 2500UL * IR_CYCLES_PER_US)
+		{
+				return 0;
+		}
+
+		return 1;
 }
 
 /**********************************************************************
@@ -234,42 +302,78 @@ static int isRepeatedKey(void)
  ***********************************************************************/
 void IRReceiver_IRQ_Callback(void)
 {
-    uint64_t time;
-    static uint64_t pre_time = 0;
+    //uint64_t time;
+    //static uint64_t pre_time = 0;
+	
+		uint32_t time;
+		static uint32_t pre_time = 0;
+		static uint8_t first_edge = 1;
 		
 	  struct ir_data idata ;
         
-	/* 1. 记录中断发生的时刻 */	
-	time = system_get_ns();
-	ir_edge_count++;
-    
-    /* 一次按键的最长数据 = 引导码 + 32个数据"1" = 9+4.5+2.25*32 = 85.5ms
-     * 如果当前中断的时刻, 举例上次中断的时刻超过这个时间, 以前的数据就抛弃
-     */
+	///* 1. 记录中断发生的时刻 */	
+	//time = system_get_ns();
+	//ir_edge_count++;
+  //  
+  //  /* 一次按键的最长数据 = 引导码 + 32个数据"1" = 9+4.5+2.25*32 = 85.5ms
+  //   * 如果当前中断的时刻, 举例上次中断的时刻超过这个时间, 以前的数据就抛弃
+  //   */
+	//
+	///* 检查系统时间是否出现倒退 */
+	//	if (pre_time != 0 && time < pre_time)
+	//	{
+	//			ir_time_backwards_count++;
+	//	}
+	//
+	//	if (pre_time != 0 &&
+	//			time - pre_time > 100000000ULL)
+	//	{
+	//			if (g_IRReceiverIRQ_Cnt > 0 &&
+	//					g_IRReceiverIRQ_Cnt < 68)
+	//			{
+	//					ir_incomplete_reset_count++;
+	//					ir_last_partial_edges = g_IRReceiverIRQ_Cnt;
+	//			}
+	//
+	//			g_IRReceiverIRQ_Cnt = 0;
+	//	}
+	//
+	//	pre_time = time;
+  //  
+	//g_IRReceiverIRQ_Timers[g_IRReceiverIRQ_Cnt] = time;
+	
+	
+		// 从 DWT 直接读取当前周期数
+		time = DWT->CYCCNT;
 
-	/* 检查系统时间是否出现倒退 */
-		if (pre_time != 0 && time < pre_time)
-		{
-				ir_time_backwards_count++;
-		}
+		ir_edge_count++;
 
-		if (pre_time != 0 &&
-				time - pre_time > 100000000ULL)
+		// 已经收到过至少一个边沿，才计算时间间隔
+		if (!first_edge)
 		{
-				if (g_IRReceiverIRQ_Cnt > 0 &&
-						g_IRReceiverIRQ_Cnt < 68)
+				uint32_t delta = (uint32_t)(time - pre_time);
+
+				// 超过100ms，重新开始接收
+				if (delta > 100000UL * IR_CYCLES_PER_US)
 				{
-						ir_incomplete_reset_count++;
-						ir_last_partial_edges = g_IRReceiverIRQ_Cnt;
-				}
+						if (g_IRReceiverIRQ_Cnt > 0 &&
+								g_IRReceiverIRQ_Cnt < 68)
+						{
+								ir_incomplete_reset_count++;
+								ir_last_partial_edges = g_IRReceiverIRQ_Cnt;
+						}
 
-				g_IRReceiverIRQ_Cnt = 0;
+						g_IRReceiverIRQ_Cnt = 0;
+				}
 		}
 
+		first_edge = 0;
 		pre_time = time;
-    
-	g_IRReceiverIRQ_Timers[g_IRReceiverIRQ_Cnt] = time;
 
+		// 记录本次边沿的周期计数
+		g_IRReceiverIRQ_Timers[g_IRReceiverIRQ_Cnt] = time;
+	
+	
 	/* 2. 累计中断次数 */
 	g_IRReceiverIRQ_Cnt++;
 
