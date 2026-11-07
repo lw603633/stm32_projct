@@ -7,6 +7,7 @@
  */
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "cmsis_os.h"
 #include "FreeRTOS.h"                   // ARM.FreeRTOS::RTOS:Core
@@ -89,6 +90,8 @@ static QueueHandle_t g_xQueueMPU6050;
 
 static QueueSetHandle_t g_xQueueSetInput; /* 输入设备的队列集 */
 
+static uint32_t uptSpeed;
+
 //static TimerHandle_t g_Dht11Time;
 
 /* 挡球板任务 */
@@ -97,7 +100,8 @@ static void platform_task(void *params)
     byte platformXtmp = platformX;    
     uint8_t dev, data, last_data;
 	
-		struct input_data idata;
+		//struct input_data idata;
+	  struct game1_data gdata;
 
     // Draw platform
     draw_bitmap(platformXtmp, g_yres - 8, platform, 12, 8, NOINVERT, 0);
@@ -107,19 +111,32 @@ static void platform_task(void *params)
     {
         /* 读取红外遥控器 */
 		//if (0 == IRReceiver_Read(&dev, &data))
-		  xQueueReceive(g_xQueuePlatform,&idata,portMAX_DELAY );
-			uptMove = idata.val;
+		  xQueueReceive(g_xQueuePlatform,&gdata,portMAX_DELAY );
+			uptMove = gdata.dir;
+			uptSpeed = gdata.steps;
             
             // Hide platform
             draw_bitmap(platformXtmp, g_yres - 8, clearImg, 12, 8, NOINVERT, 0);
             draw_flushArea(platformXtmp, g_yres - 8, 12, 8);
             
             // Move platform
-            if(uptMove == UPT_MOVE_RIGHT)
-                platformXtmp += 3;
-            else if(uptMove == UPT_MOVE_LEFT)
-                platformXtmp -= 3;
-            uptMove = UPT_MOVE_NONE;
+            if(uptMove == RIGHT){
+								if(uptSpeed == 1)
+									platformXtmp += 3;
+								else if (uptSpeed == 2)
+									platformXtmp += 5;
+								else if (uptSpeed == 4)
+									platformXtmp += 8;
+							}
+            else if(uptMove == LEFT){
+								if(uptSpeed == 1)
+									platformXtmp -= 3;
+								else if (uptSpeed == 2)
+									platformXtmp -= 5;
+								else if (uptSpeed == 4)
+									platformXtmp -= 8;
+							}
+            uptMove = NONE;
             
             // Make sure platform stays on screen
             if(platformXtmp > 250)
@@ -156,7 +173,7 @@ void game1_task(void *params)
 		//xTimerStart( g_Dht11Time, portMAX_DELAY );
 	
 	
-	g_xQueuePlatform = xQueueCreate(10, sizeof(struct input_data));
+	g_xQueuePlatform = xQueueCreate(10, sizeof(struct game1_data));
 	configASSERT(g_xQueuePlatform != NULL);
 	
 	xTaskCreate(MPU6050_Task, "MPU6050Task", 128, NULL, osPriorityNormal, NULL);

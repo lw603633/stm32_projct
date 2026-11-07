@@ -9,8 +9,27 @@
 #ifndef APP_INPUT_H_
 #define APP_INPUT_H_
 
+#include <stdbool.h>
+#include <stdint.h>
+#include "portmacro.h"
 
 void InputTask(void *pvParameters);
+
+enum dev{
+	IR , Rotary ,MPU6050
+};
+
+enum direction{
+	LEFT , NONE , RIGHT
+};
+
+struct game1_data{
+	uint32_t dev;
+	uint32_t dir;
+	uint32_t steps;
+	TickType_t timestamp;
+	
+};
 
 
 #endif /* APP_INPUT_H_ */

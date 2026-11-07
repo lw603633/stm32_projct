@@ -112,22 +112,45 @@ void mdelay(int ms)
  * -----------------------------------------------
  * 2023/08/03	     V1.0	  韦东山	      创建
  ***********************************************************************/
+//uint64_t system_get_ns(void)
+//{
+//    //extern uint32_t HAL_GetTick(void);
+//    extern TIM_HandleTypeDef        htim4;
+//    TIM_HandleTypeDef *hHalTim = &htim4;
+//    
+//    uint64_t ns = HAL_GetTick();
+//    uint64_t cnt;
+//    uint64_t reload;
+//
+//    cnt = __HAL_TIM_GET_COUNTER(hHalTim);
+//    reload = __HAL_TIM_GET_AUTORELOAD(hHalTim);
+//
+//    ns *= 1000000;
+//    ns += cnt * 1000000 / reload;
+//    return ns;
+//}
+//
+//chatgpt改良 2026.11.7
 uint64_t system_get_ns(void)
 {
-    //extern uint32_t HAL_GetTick(void);
-    extern TIM_HandleTypeDef        htim4;
-    TIM_HandleTypeDef *hHalTim = &htim4;
-    
-    uint64_t ns = HAL_GetTick();
-    uint64_t cnt;
-    uint64_t reload;
+    extern TIM_HandleTypeDef htim4;
 
-    cnt = __HAL_TIM_GET_COUNTER(hHalTim);
-    reload = __HAL_TIM_GET_AUTORELOAD(hHalTim);
+    uint32_t tick_before;
+    uint32_t tick_after;
+    uint32_t cnt;
 
-    ns *= 1000000;
-    ns += cnt * 1000000 / reload;
-    return ns;
+    do
+    {
+        tick_before = HAL_GetTick();
+
+        cnt = __HAL_TIM_GET_COUNTER(&htim4);
+
+        tick_after = HAL_GetTick();
+
+    } while (tick_before != tick_after);
+
+    return (uint64_t)tick_before * 1000000ULL
+         + (uint64_t)cnt * 1000ULL;
 }
 
 unsigned long getRunTimeCounterValue(void)

@@ -30,6 +30,15 @@ static QueueHandle_t g_xQueueIR;
 
 static uint32_t g_last_val;
 
+volatile uint32_t ir_edge_count = 0;
+volatile uint32_t ir_full_ok_count = 0;
+volatile uint32_t ir_full_fail_count = 0;
+volatile uint32_t ir_driver_queue_fail = 0;
+
+volatile uint32_t ir_time_backwards_count = 0;
+volatile uint32_t ir_incomplete_reset_count = 0;
+volatile uint32_t ir_last_partial_edges = 0;
+
 #define NEXT_POS(x) ((x+1) % BUF_LEN)
 
 /* 辅助函数 */
@@ -176,7 +185,10 @@ static int IRReceiver_IRQTimes_Parse(void)
 //PutKeyToBuf(datas[2]);
 		idata.dev = datas[0];
 		idata.val = datas[2];
-		xQueueSendToBackFromISR(g_xQueueIR, &idata, NULL);
+		if (xQueueSendToBackFromISR(g_xQueueIR, &idata, NULL) != pdPASS)
+		{
+			ir_driver_queue_fail++;
+		}
     return 0;
 }
 
@@ -229,15 +241,32 @@ void IRReceiver_IRQ_Callback(void)
         
 	/* 1. 记录中断发生的时刻 */	
 	time = system_get_ns();
+	ir_edge_count++;
     
     /* 一次按键的最长数据 = 引导码 + 32个数据"1" = 9+4.5+2.25*32 = 85.5ms
      * 如果当前中断的时刻, 举例上次中断的时刻超过这个时间, 以前的数据就抛弃
      */
-    if (time - pre_time > 100000000) 
-    {
-        g_IRReceiverIRQ_Cnt = 0;
-    }
-    pre_time = time;
+
+	/* 检查系统时间是否出现倒退 */
+		if (pre_time != 0 && time < pre_time)
+		{
+				ir_time_backwards_count++;
+		}
+
+		if (pre_time != 0 &&
+				time - pre_time > 100000000ULL)
+		{
+				if (g_IRReceiverIRQ_Cnt > 0 &&
+						g_IRReceiverIRQ_Cnt < 68)
+				{
+						ir_incomplete_reset_count++;
+						ir_last_partial_edges = g_IRReceiverIRQ_Cnt;
+				}
+
+				g_IRReceiverIRQ_Cnt = 0;
+		}
+
+		pre_time = time;
     
 	g_IRReceiverIRQ_Timers[g_IRReceiverIRQ_Cnt] = time;
 
@@ -256,13 +285,24 @@ void IRReceiver_IRQ_Callback(void)
 			
 			idata.dev = 0;
 			idata.val = 0;
-			xQueueSendToBackFromISR(g_xQueueIR,&idata,NULL);
+			if (xQueueSendToBackFromISR(g_xQueueIR, &idata, NULL) != pdPASS)
+			{
+        ir_driver_queue_fail++;
+			}
 			g_IRReceiverIRQ_Cnt = 0;
 		}
 	}
 	if (g_IRReceiverIRQ_Cnt == 68)
 	{
-		IRReceiver_IRQTimes_Parse();
+		//判断记录外部中断进入次数
+	  if (IRReceiver_IRQTimes_Parse() == 0)
+    {
+        ir_full_ok_count++;
+    }
+    else
+    {
+        ir_full_fail_count++;
+    }
 		g_IRReceiverIRQ_Cnt = 0;
 	}
 }

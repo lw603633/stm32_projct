@@ -22,7 +22,7 @@
 #include "driver_mpu6050.h" 
 //#include "driver_dht11.h"
 
-
+#include "app_input.h" 
 
 static QueueHandle_t g_xQueuePlatform; /* 挡球板队列 */
 static QueueHandle_t g_xQueueIR;
@@ -31,41 +31,73 @@ static QueueHandle_t g_xQueueMPU6050;
 
 static QueueSetHandle_t g_xQueueSetInput; /* 输入设备的队列集 */
 
+volatile uint32_t ir_left_count = 0;
+volatile uint32_t ir_right_count = 0;
+volatile uint32_t ir_repeat_count = 0;
+volatile uint32_t app_queue_fail_count = 0;
+
+volatile uint32_t ir_repeat_used_count = 0;
+volatile uint32_t ir_repeat_ignored_count = 0;
 
 static void ProcessIRData(void)
 {
 		struct ir_data idata ;
-		struct input_data input;
-		xQueueReceive(g_xQueueIR,&idata,0);
+		//struct input_data input;
+		struct game1_data gdata;
 	
+		static enum direction last_dir = NONE;
+	
+		xQueueReceive(g_xQueueIR,&idata,0);
+		
+		gdata.dev = IR;
+		
 		if (idata.val == IR_KEY_LEFT)
 		{
-			input.dev = idata.dev;
-			input.val = UPT_MOVE_LEFT;
+			ir_left_count++;
+			gdata.dir = LEFT;
+			last_dir = LEFT;
 		}
 		else if (idata.val == IR_KEY_RIGHT)
 		{
-			input.dev = idata.dev;
-			input.val = UPT_MOVE_RIGHT;
+			ir_right_count++;
+			gdata.dir = RIGHT;
+			last_dir = RIGHT;
 		}
 		else if (idata.val == IR_KEY_REPEAT)
 		{
-			/* 保持不变 */;
+			ir_repeat_count++;
+			if (last_dir == NONE)
+			{
+				ir_repeat_ignored_count++;
+        return;
+			}
+
+			
+			ir_repeat_used_count++;
+			gdata.dir = last_dir;
+			
 		}
 		else
 		{
-			input.dev = idata.dev;
-			input.val = UPT_MOVE_NONE;
+
+			gdata.dir = NONE;
+			last_dir = NONE;
 		}
 		
-		xQueueSend(g_xQueuePlatform, &input, 0);
+		gdata.steps  = 2;
+		gdata.timestamp = xTaskGetTickCount();
+		if (xQueueSend(g_xQueuePlatform, &gdata, 0) != pdPASS)
+		{
+			app_queue_fail_count++;
+		}
 	 
 }
 
 static void ProcessRotaryData(void)
 {
 	struct rotary_data rdata;
-	struct input_data idata;
+	//struct input_data idata;
+	struct game1_data gdata;
 	int left;
 	int i, cnt;
 	
@@ -95,19 +127,25 @@ static void ProcessRotaryData(void)
 		cnt = 1;
 			
 	/* 写挡球板队列 */
-	idata.dev = 1;
-	idata.val = left ? UPT_MOVE_LEFT : UPT_MOVE_RIGHT;
-	for (i = 0; i < cnt; i++)
-	{
-		xQueueSend(g_xQueuePlatform, &idata, 0);
-	}
+	//idata.dev = 1;
+	//idata.val = left ? UPT_MOVE_LEFT : UPT_MOVE_RIGHT;
+	//for (i = 0; i < cnt; i++)
+	//{
+	//	xQueueSend(g_xQueuePlatform, &idata, 0);
+	//}
 	
+	gdata.dev = Rotary;
+	gdata.dir = left ? LEFT : RIGHT;
+	gdata.steps  = cnt;
+	gdata.timestamp = xTaskGetTickCount();
+	xQueueSend(g_xQueuePlatform, &gdata, 0);
 }
 
 static void ProcessMPU6050Data(void)
 {
 	struct mpu6050_data mdata;
-	struct input_data idata;
+	//struct input_data idata;
+	struct game1_data gdata;
 	
 	/* 读旋转编码器队列 */
 	xQueueReceive(g_xQueueMPU6050, &mdata, 0);
@@ -116,20 +154,22 @@ static void ProcessMPU6050Data(void)
 	/* 判断角度, 大于90度表示往左移动挡球板, 小于90度表示往右移动挡球板 */
 	if (mdata.angle_x > 90)
 	{
-		idata.val = UPT_MOVE_LEFT;
+		gdata.dir = LEFT;
 	}
 	else if(mdata.angle_x < 90)
 	{
-		idata.val = UPT_MOVE_RIGHT;
+		gdata.dir = RIGHT;
 	}
 	else
 	{
-		idata.val = UPT_MOVE_NONE;
+		gdata.dir = NONE;
 	}
 	
 	/* 写挡球板队列 */
-	idata.dev = 2;
-	xQueueSend(g_xQueuePlatform, &idata, 0);
+	gdata.dev = MPU6050;
+	gdata.steps  = 2;
+	gdata.timestamp = xTaskGetTickCount();
+	xQueueSend(g_xQueuePlatform, &gdata, 0);
 }
 
 //static void DHT11_Fucn( TimerHandle_t xTimer )
